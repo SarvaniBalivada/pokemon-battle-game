@@ -40,7 +40,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script>
-        // Your Firebase configuration
+       
         const firebaseConfig = {
             apiKey: "AIzaSyChrkOiUQ4GelK048YsO6aCFML6LIsXphQ",
             authDomain: "pokemon-12cf6.firebaseapp.com",
@@ -51,11 +51,10 @@
             measurementId: "G-R7KM8WG1P9"
         };
 
-        // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // Add authentication state observer
+        
         firebase.auth().onAuthStateChanged((user) => {
             if (user) {
                 // Store user data in session
@@ -253,7 +252,7 @@
             }
         });
 
-        // Add this CSS to your styles.css
+        
         // Add points display function
         function updatePointsDisplay() {
             const points = localStorage.getItem('gamePoints') || '0';
