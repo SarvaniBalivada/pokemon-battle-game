@@ -77,11 +77,11 @@
                 const password = document.getElementById('newPassword').value;
                 const username = document.getElementById('newUsername').value;
 
-                // Create user first
+              
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 const user = userCredential.user;
 
-                // Then store user data
+        
                 await db.collection('users').doc(user.uid).set({
                     username: username,
                     email: email,
@@ -91,7 +91,7 @@
                     points: 0  // Initialize points
                 });
 
-                // Store session data and redirect
+                
                 const userData = { username, email, uid: user.uid, points: 0 };
                 sessionStorage.setItem('userData', JSON.stringify(userData));
                 window.location.href = '/dashboard';
