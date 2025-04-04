@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="auth-page">
+    <h1>Welcome to Pokémon Game Field !</h1>
+    <div class="login-card" id="loginForm">
+        <h2>Login to Play</h2>
+        <form>
+            <label for="loginEmail">Email: </label>
+            <input type="email" id="loginEmail" name="email" required>
+            <br>
+            <label for="password">Password: </label>
+            <input type="password" id="password" name="password" required>
+            <br>
+            <input type="submit" value="Login">
+            <br>
+            <p>Don't have an account?<a href="#" onclick="toggleForms()">Register</a></p>
+        </form>
+    </div>
+    <div class="login-card" id="registrationForm" style="display: none;">
+        <h2>Register Now!</h2>
+        <form>
+            <label for="newUsername">Username: </label>
+            <input type="text" id="newUsername" name="newUsername" required>
+            <br>
+            <label for="regEmail">Email: </label>
+            <input type="email" id="regEmail" name="email" required>
+            <br>
+            <label for="newPassword">Password: </label>
+            <input type="password" id="newPassword" name="newPassword" required>
+            <br>
+            <input type="submit" value="Register">
+            <br>
+            <p>Already have an account? <a href="#" onclick="toggleForms()">Login</a></p>
+        </form>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyChrkOiUQ4GelK048YsO6aCFML6LIsXphQ",
+            authDomain: "pokemon-12cf6.firebaseapp.com",
+            projectId: "pokemon-12cf6",
+            storageBucket: "pokemon-12cf6.firebasestorage.app",
+            messagingSenderId: "209128679295",
+            appId: "1:209128679295:web:aed13b2cdffd45f0e41c4a",
+            measurementId: "G-R7KM8WG1P9"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        function toggleForms() {
+            const loginForm = document.getElementById('loginForm');
+            const registrationForm = document.getElementById('registrationForm');
+            if(loginForm.style.display === 'none') {
+                loginForm.style.display = 'block';
+                registrationForm.style.display = 'none';
+            } else {
+                loginForm.style.display = 'none';
+                registrationForm.style.display = 'block';
+            }
+        }
+
+        document.querySelector('#registrationForm form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            try {
+                const email = document.getElementById('regEmail').value;
+                const password = document.getElementById('newPassword').value;
+                const username = document.getElementById('newUsername').value;
+
+                // Create user first
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+
+                // Then store user data
+                await db.collection('users').doc(user.uid).set({
+                    username: username,
+                    email: email,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    uid: user.uid,
+                    status: 'active',
+                    points: 0  // Initialize points
+                });
+
+                // Store session data and redirect
+                const userData = { username, email, uid: user.uid, points: 0 };
+                sessionStorage.setItem('userData', JSON.stringify(userData));
+                window.location.href = '/dashboard';
+            } catch (error) {
+                console.error('Registration error:', error);
+                alert(error.message);
+            }
+        });
+
+        document.querySelector('#loginForm form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('password').value;
+            
+            auth.signInWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    const user = userCredential.user;
+                    return db.collection('users').doc(user.uid).get();
+                })
+                .then((doc) => {
+                    if (doc.exists) {
+                        const userData = doc.data();
+                        // Store both user data and points
+                        sessionStorage.setItem('userData', JSON.stringify(userData));
+                        localStorage.setItem('gamePoints', userData.points || 0);
+                        console.log('Login successful:', userData.username);
+                        window.location.href = '/dashboard';
+                    } else {
+                        console.error('No user data found');
+                        alert('User data not found. Please try again.');
+                    }
+                })
+                .catch((error) => {
+                    console.error('Login error:', error);
+                    alert('Login failed: ' + error.message);
+                });
+        });
+
+        auth.onAuthStateChanged((user) => {
+            if (user && sessionStorage.getItem('userData')) {
+                window.location.replace('/dashboard');
+            } else {
+                sessionStorage.clear();
+                localStorage.clear();
+                document.getElementById('loginForm').style.display = 'block';
+                document.getElementById('registrationForm').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

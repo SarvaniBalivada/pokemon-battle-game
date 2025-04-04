@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+<head>
+ <title><%= title %></title>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="dashboard-page">
+    <div class="dashboard-container">
+        <div id="userInfo" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center;">
+                <h2 style="margin: 0; font-size: 32px;">Pokémon Battle Arena</h2>
+                <img src="/images/pokeball.png" 
+                     alt="Pokemon Ball" 
+                     style="width: 45px; height: 45px; margin-left: 15px;">
+                <p id="pointsDisplay" style="color: #34495e; font-weight: bold; margin-left: 20px; font-size: 18px;">Points: 0</p>
+            </div>
+            <button id="logoutBtn" class="battle-btn" style="background: #34495e; font-size: 16px;">Logout</button>
+        </div>
+        <input type="text" class="search-box" id="searchPokemon" placeholder="Search Pokemon...">
+        <div class="battle-controls">
+            <button id="startBattle" class="battle-btn">Start Battle</button>
+            <button id="attack" class="battle-btn" disabled>Attack</button>
+        </div>
+        <div id="battleField" class="battle-field">
+            <div id="pokemon1" class="battle-pokemon"></div>
+            <div id="battleLog" class="battle-log"></div>
+            <div id="pokemon2" class="battle-pokemon"></div>
+        </div>
+        <div class="pokemon-container" id="pokemonList"></div>
+        <div id="selectionPopup" class="selection-popup">
+            Pokemon selected! <button id="quickStartBattle" class="battle-btn" style="margin-left: 10px; background: #27ae60;">Start Battle</button>
+        </div>
+        <div id="victoryPopup" class="victory-popup">
+            <h2>🎉 Victory! 🎉</h2>
+            <p>You won the battle and earned 10 points!</p>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script>
+        // Your Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyChrkOiUQ4GelK048YsO6aCFML6LIsXphQ",
+            authDomain: "pokemon-12cf6.firebaseapp.com",
+            projectId: "pokemon-12cf6",
+            storageBucket: "pokemon-12cf6.firebasestorage.app",
+            messagingSenderId: "209128679295",
+            appId: "1:209128679295:web:aed13b2cdffd45f0e41c4a",
+            measurementId: "G-R7KM8WG1P9"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // Add authentication state observer
+        firebase.auth().onAuthStateChanged((user) => {
+            if (user) {
+                // Store user data in session
+                sessionStorage.setItem('userData', JSON.stringify({
+                    uid: user.uid,
+                    email: user.email
+                }));
+            } else {
+                // Redirect to login if not authenticated
+                window.location.href = '/';
+            }
+        });
+
+        async function fetchPokemons() {
+            try {
+                const response = await fetch('https://pokeapi.co/api/v2/pokemon?limit=151');
+                const data = await response.json();
+                
+                const pokemonList = document.getElementById('pokemonList');
+                pokemonList.innerHTML = '';
+
+                for (const pokemon of data.results) {
+                    const pokemonResponse = await fetch(pokemon.url);
+                    const pokemonData = await pokemonResponse.json();
+                    
+                    const card = createPokemonCard(pokemonData);
+                    pokemonList.appendChild(card);
+                }
+            } catch (error) {
+                console.error('Error fetching Pokemon:', error);
+            }
+        }
+
+        // Create Pokemon card
+        function createPokemonCard(pokemonData) {
+            const card = document.createElement('div');
+            card.className = 'pokemon-card';
+            card.innerHTML = `
+                <img src="${pokemonData.sprites.front_default}" alt="${pokemonData.name}">
+                <h3>${pokemonData.name}</h3>
+                <p>HP: ${pokemonData.stats[0].base_stat}</p>
+                <p>Attack: ${pokemonData.stats[1].base_stat}</p>
+                <p>Defense: ${pokemonData.stats[2].base_stat}</p>
+            `;
+
+            card.addEventListener('click', () => {
+                if (!currentBattle) {
+                    if (selectedPokemon === pokemonData) {
+                        // Deselect if clicking the same card
+                        selectedPokemon = null;
+                        card.style.backgroundColor = 'white';
+                        document.getElementById('selectionPopup').style.display = 'none';
+                    } else {
+                        // Select new card
+                        selectedPokemon = pokemonData;
+                        document.querySelectorAll('.pokemon-card').forEach(c => {
+                            c.style.backgroundColor = 'white';
+                        });
+                        card.style.backgroundColor = 'rgba(46, 204, 113, 0.1)';
+                        document.getElementById('selectionPopup').style.display = 'block';
+                    }
+                }
+            });
+
+            return card;
+        }
+
+        // Search functionality
+        document.getElementById('searchPokemon').addEventListener('input', async (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const cards = document.querySelectorAll('.pokemon-card');
+            
+            cards.forEach(card => {
+                const name = card.querySelector('h3').textContent.toLowerCase();
+                card.style.display = name.includes(searchTerm) ? 'block' : 'none';
+            });
+        });
+
+        // Initial Pokemon load
+        fetchPokemons();
+
+        let selectedPokemon = null;
+        let currentBattle = null;
+
+        // Battle functionality
+        document.getElementById('startBattle').addEventListener('click', async () => {
+            if (!selectedPokemon) {
+                alert('Please select a Pokemon first!');
+                return;
+            }
+
+            try {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                // Get a random opponent
+                const randomId = Math.floor(Math.random() * 151) + 1;
+                const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${randomId}`);
+                const opponent = await response.json();
+
+                // Create battle instance
+                currentBattle = {
+                    pokemon1: {
+                        ...selectedPokemon,
+                        currentHP: selectedPokemon.stats[0].base_stat,
+                        maxHP: selectedPokemon.stats[0].base_stat
+                    },
+                    pokemon2: {
+                        ...opponent,
+                        currentHP: opponent.stats[0].base_stat,
+                        maxHP: opponent.stats[0].base_stat
+                    },
+                    battleLog: [`Battle started between ${selectedPokemon.name} and ${opponent.name}!`]
+                };
+                
+                // Show battle field
+                document.getElementById('battleField').style.display = 'grid';
+                document.getElementById('attack').disabled = false;
+                
+                updateBattleUI(currentBattle);
+            } catch (error) {
+                console.error('Error starting battle:', error);
+                alert('Failed to start battle!');
+            }
+        });
+
+        document.getElementById('attack').addEventListener('click', async () => {
+            if (!currentBattle) return;
+
+            try {
+                // Calculate damage
+                const attackerStat = currentBattle.pokemon1.stats[1].base_stat;
+                const defenderStat = currentBattle.pokemon2.stats[2].base_stat;
+                const damage = Math.max(1, Math.floor((attackerStat * 0.5 * (100 / defenderStat)) * (Math.random() * (1.15 - 0.85) + 0.85)));
+                
+                // Apply damage
+                currentBattle.pokemon2.currentHP = Math.max(0, currentBattle.pokemon2.currentHP - damage);
+                currentBattle.battleLog.push(`${currentBattle.pokemon1.name} attacks ${currentBattle.pokemon2.name} for ${damage} damage!`);
+
+                // Check if battle ended
+                if (currentBattle.pokemon2.currentHP <= 0) {
+                    currentBattle.battleLog.push(`${currentBattle.pokemon2.name} fainted! ${currentBattle.pokemon1.name} wins!`);
+                    document.getElementById('attack').disabled = true;
+                    
+                    // Get current user data
+                    const userData = JSON.parse(sessionStorage.getItem('userData'));
+                    const userRef = db.collection('users').doc(userData.uid);
+                    
+                    // Update points in Firestore and local storage
+                    userRef.update({
+                        points: firebase.firestore.FieldValue.increment(10)
+                    }).then(() => {
+                        const currentPoints = parseInt(localStorage.getItem('gamePoints') || '0');
+                        const newPoints = currentPoints + 10;
+                        localStorage.setItem('gamePoints', newPoints);
+                        updatePointsDisplay();
+                        document.getElementById('victoryPopup').style.display = 'block';
+                    }).catch(error => {
+                        console.error('Error updating points:', error);
+                    });
+                    
+                    setTimeout(() => {
+                        document.getElementById('victoryPopup').style.display = 'none';
+                        document.getElementById('battleField').style.display = 'none';
+                        currentBattle = null;
+                    }, 3000);
+                } else {
+                    // Opponent's turn
+                    const oppDamage = Math.max(1, Math.floor((currentBattle.pokemon2.stats[1].base_stat * 0.5 * (100 / currentBattle.pokemon1.stats[2].base_stat)) * (Math.random() * (1.15 - 0.85) + 0.85)));
+                    currentBattle.pokemon1.currentHP = Math.max(0, currentBattle.pokemon1.currentHP - oppDamage);
+                    currentBattle.battleLog.push(`${currentBattle.pokemon2.name} attacks ${currentBattle.pokemon1.name} for ${oppDamage} damage!`);
+
+                    if (currentBattle.pokemon1.currentHP <= 0) {
+                        currentBattle.battleLog.push(`${currentBattle.pokemon1.name} fainted! ${currentBattle.pokemon2.name} wins!`);
+                        document.getElementById('attack').disabled = true;
+                        setTimeout(() => {
+                            document.getElementById('battleField').style.display = 'none';
+                            currentBattle = null;
+                        }, 3000);
+                    }
+                }
+                
+                updateBattleUI(currentBattle);
+            } catch (error) {
+                console.error('Error during attack:', error);
+                // Replace alert with custom error popup
+                const errorPopup = document.createElement('div');
+                errorPopup.className = 'error-popup';
+                errorPopup.innerHTML = `
+                    <div class="error-content">
+                        <p>Attack failed. Please try again.</p>
+                        <button class="battle-btn" onclick="this.parentElement.parentElement.remove()">OK</button>
+                    </div>
+                `;
+                document.body.appendChild(errorPopup);
+            }
+        });
+
+        // Add this CSS to your styles.css
+        // Add points display function
+        function updatePointsDisplay() {
+            const points = localStorage.getItem('gamePoints') || '0';
+            document.getElementById('pointsDisplay').textContent = `Points: ${points}`;
+        }
+
+        // Initialize points display
+        updatePointsDisplay();
+
+        function updateBattleUI(status) {
+            const pokemon1El = document.getElementById('pokemon1');
+            const pokemon2El = document.getElementById('pokemon2');
+            const battleLogEl = document.getElementById('battleLog');
+
+            pokemon1El.innerHTML = `
+                <img src="${status.pokemon1.sprites.front_default}" alt="${status.pokemon1.name}" style="width: 120px; height: 120px;">
+                <h3>${status.pokemon1.name}</h3>
+                <div class="hp-bar">
+                    <div class="hp-fill" style="width: ${(status.pokemon1.currentHP / status.pokemon1.maxHP) * 100}%"></div>
+                </div>
+                <p>HP: ${status.pokemon1.currentHP}/${status.pokemon1.maxHP}</p>
+            `;
+
+            pokemon2El.innerHTML = `
+                <img src="${status.pokemon2.sprites.front_default}" alt="${status.pokemon2.name}" style="width: 120px; height: 120px;">
+                <h3>${status.pokemon2.name}</h3>
+                <div class="hp-bar">
+                    <div class="hp-fill" style="width: ${(status.pokemon2.currentHP / status.pokemon2.maxHP) * 100}%"></div>
+                </div>
+                <p>HP: ${status.pokemon2.currentHP}/${status.pokemon2.maxHP}</p>
+            `;
+
+            battleLogEl.innerHTML = status.battleLog.map(log => `<p>${log}</p>`).join('');
+            battleLogEl.scrollTop = battleLogEl.scrollHeight;
+        }
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            firebase.auth().signOut().then(() => {
+                // Clear essential storage
+                localStorage.clear();
+                sessionStorage.clear();
+                
+                // Redirect to login page
+                window.location.href = '/';
+            }).catch((error) => {
+                console.error('Error signing out:', error);
+            });
+        });
+         // Add quick start battle functionality
+         document.getElementById('quickStartBattle').addEventListener('click', () => {
+               document.getElementById('startBattle').click();
+               document.getElementById('selectionPopup').style.display = 'none';
+           });
+       
+    </script>
+</body>
+</html>
